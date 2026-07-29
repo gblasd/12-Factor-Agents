@@ -13,13 +13,44 @@ load_dotenv()
 # get your API key from an environment variable or secret management system
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+# Define two tools schemas: final_aswer and perform_math
+tool_schemas = [
+    {
+        "type": "function",
+        "name": "final_answer",
+        "description": "Provide the final answer and stop.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "answer": {"type": "string", "description": "The final answer for the user."}
+            },
+            "required": ["answer"],
+            "additionalProperties": False
+        }
+    },
+    {
+        "type": "function",
+        "name": "perform_math",
+        "description": "Perform a mathematical calculation.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "operation": {"type": "string", "description": "The mathematical operation to perform."},
+                "a": {"type": "number", "description": "The first number."},
+                "b": {"type": "number", "description": "The second number."}
+            },
+            "required": ["operation", "a", "b"],
+            "additionalProperties": False
+        }
+    }
+]
+
 # System prompt answer
 # Define the system prompt that instructs the model on its behavior
 system_prompt = """
-You are a helpful assistant that only answer with the following JSON schema:
-{
-    "answer": "the answer to the question"
-}
+You are a helpful assistant.
 """
 
 # Make a request to the Responses API
@@ -30,29 +61,17 @@ response = openai.responses.create(
     input=[
         {
             "role": "user",
-            "content": "What is 15 + 27?"
+            "content": "Calculate 47 multiplied by 23 and give the final answer."
         }
-    ]
+    ],
+    tools=tool_schemas,
+    tool_choice="required",
+    reasoning={"effort": "low"}
 )
 # Navigating the Response Structure
 # Parse the output to extract the JSON answer
 for item in response.output:
-    # check if this item is a message
-    if item.type == "message":
-        # Handling JSON Parse Failure
-        try:
-            # Extract raw text from the content
-            text = item.content[0].text
-            # Parse the JSON string from the content
-            result = json.loads(text)
-            # Extract and print the answer field
-            print(f"Answer: {result['answer']}")
-        except json.JSONDecodeError:
-            # Handle cases where the model didn't return valid JSON
-            print("Failed to parse JSON from response")
-        # Extract raw text from the content
-        text = item.content[0].text
-        # Parse the JSON string from the content
-        result = json.loads(text)
-        # Extract and print the answer field
-        print(f"Answer: {result['answer']}")
+    # Check if this item is a message
+    if item.type == "function_call" and item.name == "final_answer":
+        args = json.loads(item.arguments)
+        print(f"Answer: {args['answer']}")
