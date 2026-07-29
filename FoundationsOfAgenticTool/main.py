@@ -12,8 +12,10 @@ load_dotenv()
 
 # get your API key from an environment variable or secret management system
 openai.api_key = os.getenv("OPENAI_API_KEY")
+if not openai.api_key:
+    raise EnvironmentError("OPENAI_API_KEY not found. Set it in environment or .env")
 
-# Define two tools schemas: final_aswer and perform_math
+# Define two tool schemas: final_answer and perform_math
 tool_schemas = [
     {
         "type": "function",
@@ -47,31 +49,31 @@ tool_schemas = [
     }
 ]
 
-# System prompt answer
-# Define the system prompt that instructs the model on its behavior
-system_prompt = """
-You are a helpful assistant.
-"""
+# System prompt that instructs the model on its behavior
+system_prompt = "You are a helpful assistant."
 
-# Make a request to the Responses API
-# The input is a list of messages, starting with the user's question
-response = openai.responses.create(
-    model="gpt-5",
-    instructions=system_prompt,
-    input=[
-        {
-            "role": "user",
-            "content": "Calculate 47 multiplied by 23 and give the final answer."
-        }
-    ],
-    tools=tool_schemas,
-    tool_choice="required",
-    reasoning={"effort": "low"}
-)
-# Navigating the Response Structure
-# Parse the output to extract the JSON answer
-for item in response.output:
-    # Check if this item is a message
-    if item.type == "function_call" and item.name == "final_answer":
-        args = json.loads(item.arguments)
-        print(f"Answer: {args['answer']}")
+def run_example():
+    # Make a request to the Responses API
+    # The input is a list of messages, starting with the user's question
+    response = openai.responses.create(
+        model="gpt-5",
+        instructions=system_prompt,
+        input=[
+            {
+                "role": "user",
+                "content": "Calculate 47 multiplied by 23 and give the final answer."
+            }
+        ],
+        tools=tool_schemas,
+        tool_choice="required",
+        reasoning={"effort": "low"}
+    )
+    # Parse the output to extract the JSON answer
+    for item in response.output:
+        # Check if this item is a message
+        if getattr(item, "type", None) == "function_call" and getattr(item, "name", None) == "final_answer":
+            args = json.loads(item.arguments)
+            print(f"Answer: {args['answer']}")
+
+if __name__ == "__main__":
+    run_example()
