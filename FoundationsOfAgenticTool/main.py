@@ -71,9 +71,11 @@ def run_example():
     # Parse the output to extract the JSON answer
     for item in response.output:
         # Check if this item is a message
-        if getattr(item, "type", None) == "function_call" and getattr(item, "name", None) == "final_answer":
+        if getattr(item, "type", None) == "function_call" : # and getattr(item, "name", None) == "final_answer":
             args = json.loads(item.arguments)
-            print(f"Answer: {args['answer']}")
+            print(f"Function call with: {args}")
 
 if __name__ == "__main__":
+    print("Start")
     run_example()
+    print("End")
