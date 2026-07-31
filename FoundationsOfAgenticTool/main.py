@@ -86,61 +86,88 @@ def run_example():
     context = [
         {
             "role": "user",
-            "content": "Compute 15 + 27"
+            "content": "Compute ((((2 * 3) + 4) * 5) + 6) * 7"
         }
     ]
 
-    response = openai.responses.create(
-        model="gpt-5",
-        instructions=system_prompt,
-        input=context,
-        tools=tool_schemas,
-        tool_choice="required",
-        reasoning={"effort": "low"}
-    )
-    # Parse the output to extract the JSON answer
-    for item in response.output:
-        # Check if this item is a message
-        if getattr(item, "type", None) == "function_call" : # and getattr(item, "name", None) == "final_answer":
+    # Set up loop control variables
+    max_steps = 5
+    step = 0
+    done = False
+    final_aswer = None
 
-            context.append({
-                "type": "function_call",
-                "name": item.name,
-                "arguments": item.arguments,
-                "call_id": item.call_id
-            })
+    # Main agent loop: continue until done or max steps reached
+    while not done and step < max_steps:
+        step += 1
+        print(f"\n--- Step {step} ---")
 
-            args = json.loads(item.arguments)
+        # Call the LLM with current context
+        response = openai.responses.create(
+            model="gpt-5",
+            instructions=system_prompt,
+            input=context,
+            tools=tool_schemas,
+            tool_choice="required",
+            reasoning={"effort": "low"}
+        )
 
-            match item.name:
-                case "add":
-                    result = add(**args)
-                case "multiply":
-                    result = multiply(**args)
-                case _:
-                    result = f"Error: Tool {item.name} not implemented"
+        # Process wach item in the response
+        # Parse the output to extract the JSON answer
+        for item in response.output:
+            # Check if this item is a message
+            if getattr(item, "type", None) == "function_call" :
+                function_name = item.name
+                args = json.loads(item.arguments)
 
-            print(f"Executed {item.name} ({args}) = {result}")
+                print(f"Calling function: {function_name} ({args})")
 
-            context.append({
-                "type": "function_call_output",
-                "call_id": item.call_id,
-                "output": json.dumps({"result": result})
-            })
+                # Add function call to context
+                context.append({
+                    "type": "function_call",
+                    "name": item.name,
+                    "arguments": item.arguments,
+                    "call_id": item.call_id
+                })
 
-    response = openai.responses.create(
-        model="gpt-5",
-        instructions=system_prompt,
-        input=context,
-        tools=tool_schemas,
-        tool_choice="required",
-        reasoning={"effort": "low"}
-    )
+                # Execute tpools and capture result for printing
+                try:
+                    match function_name:
+                        case "final_answer":
+                            result = args.get("answer")
+                            final_aswer = result
+                            output = json.dumps({"status": "reported"})
+                        case "add":
+                            result = add(**args)
+                            output = json.dumps({"result": result})
+                        case "multiply":
+                            result = multiply(**args)
+                            output = json.dumps({"result": result})
+                        case _:
+                            result = f"Tool {function_name} not found"
+                            output = json.dumps({"error": result})
+                except Exception as e:
+                    result = f"Error: {e}"
+                    output = json.dumps({"error": result})
 
-    for item in response.output:
-        if item.type == "function_call" and item.name == "final_answer":
-            args = json.loads(item.arguments)
-            print(f"Final response: {args['answer']}")
+                print(f"Result {result}")
+
+                # Add function output to context
+                context.append({
+                    "type": "function_call_output",
+                    "call_id": item.call_id,
+                    "output": output
+                })
+
+                # Exit processing if final answer reached
+                if done:
+                    break
+
+    if step >= max_steps:
+        print(f"\nReached maximum steps ({max_steps})")
+
+    print(f"\nCompleted in {step} steps")
+    if final_aswer:
+        print(f"Final answer: {final_aswer}")
 
 if __name__ == "__main__":
     print("Start")
