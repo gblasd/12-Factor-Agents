@@ -94,7 +94,7 @@ def run_example():
     max_steps = 5
     step = 0
     done = False
-    final_aswer = None
+    final_answer = None
 
     # Main agent loop: continue until done or max steps reached
     while not done and step < max_steps:
@@ -111,13 +111,18 @@ def run_example():
             reasoning={"effort": "low"}
         )
 
-        # Process wach item in the response
+        # Process watch item in the response
         # Parse the output to extract the JSON answer
         for item in response.output:
             # Check if this item is a message
             if getattr(item, "type", None) == "function_call" :
                 function_name = item.name
-                args = json.loads(item.arguments)
+                # Parse the arguments from JSON string to Python dict, parse errors in context of the function call
+                try:
+                    args = json.loads(item.arguments)
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing arguments for function {function_name}: {e}")
+                    continue
 
                 print(f"Calling function: {function_name} ({args})")
 
@@ -129,13 +134,14 @@ def run_example():
                     "call_id": item.call_id
                 })
 
-                # Execute tpools and capture result for printing
+                # Execute tools and capture result for printing
                 try:
                     match function_name:
                         case "final_answer":
                             result = args.get("answer")
-                            final_aswer = result
+                            final_answer = result
                             output = json.dumps({"status": "reported"})
+                            done = True
                         case "add":
                             result = add(**args)
                             output = json.dumps({"result": result})
@@ -166,8 +172,8 @@ def run_example():
         print(f"\nReached maximum steps ({max_steps})")
 
     print(f"\nCompleted in {step} steps")
-    if final_aswer:
-        print(f"Final answer: {final_aswer}")
+    if final_answer:
+        print(f"Final answer: {final_answer}")
 
 if __name__ == "__main__":
     print("Start")
