@@ -15,7 +15,16 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise EnvironmentError("OPENAI_API_KEY not found. Set it in environment or .env")
 
-# Define two tool schemas: final_answer and perform_math
+# Define the functions we want to make available to the model
+def add(a: float, b:float) -> float:
+    """Add two numbers together."""
+    return a + b
+
+def multiply(a: float, b: float) -> float:
+    """Multiply two numbers together."""
+    return a * b
+
+# Define two tool schemas for the mode (including final_answer)
 tool_schemas = [
     {
         "type": "function",
@@ -33,47 +42,134 @@ tool_schemas = [
     },
     {
         "type": "function",
-        "name": "perform_math",
-        "description": "Perform a mathematical calculation.",
+        "name": "add",
+        "description": "Add two numbers together.",
         "strict": True,
         "parameters": {
             "type": "object",
             "properties": {
-                "operation": {"type": "string", "description": "The mathematical operation to perform."},
                 "a": {"type": "number", "description": "The first number."},
                 "b": {"type": "number", "description": "The second number."}
             },
-            "required": ["operation", "a", "b"],
+            "required": ["a", "b"],
             "additionalProperties": False
         }
-    }
+    },
+    {
+            "type": "function",
+            "name": "multiply",
+            "description": "Multiply two numbers together.",
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number", "description": "The first number."},
+                    "b": {"type": "number", "description": "The second number."}
+                },
+                "required": ["a", "b"],
+                "additionalProperties": False
+            }
+        }
 ]
 
 # System prompt that instructs the model on its behavior
-system_prompt = "You are a helpful assistant."
+system_prompt = """
+You are a helpful assistant that can perform calculations.
+When asked to do math, you must use the provided tools.
+When your work is done, call the final_answer tool.
+"""
 
 def run_example():
     # Make a request to the Responses API
     # The input is a list of messages, starting with the user's question
-    response = openai.responses.create(
-        model="gpt-5",
-        instructions=system_prompt,
-        input=[
-            {
-                "role": "user",
-                "content": "Calculate 47 multiplied by 23 and give the final answer."
-            }
-        ],
-        tools=tool_schemas,
-        tool_choice="required",
-        reasoning={"effort": "low"}
-    )
-    # Parse the output to extract the JSON answer
-    for item in response.output:
-        # Check if this item is a message
-        if getattr(item, "type", None) == "function_call" and getattr(item, "name", None) == "final_answer":
-            args = json.loads(item.arguments)
-            print(f"Answer: {args['answer']}")
+
+    context = [
+        {
+            "role": "user",
+            "content": "Compute ((((2 * 3) + 4) * 5) + 6) * 7"
+        }
+    ]
+
+    # Set up loop control variables
+    max_steps = 5
+    step = 0
+    done = False
+    final_aswer = None
+
+    # Main agent loop: continue until done or max steps reached
+    while not done and step < max_steps:
+        step += 1
+        print(f"\n--- Step {step} ---")
+
+        # Call the LLM with current context
+        response = openai.responses.create(
+            model="gpt-5",
+            instructions=system_prompt,
+            input=context,
+            tools=tool_schemas,
+            tool_choice="required",
+            reasoning={"effort": "low"}
+        )
+
+        # Process wach item in the response
+        # Parse the output to extract the JSON answer
+        for item in response.output:
+            # Check if this item is a message
+            if getattr(item, "type", None) == "function_call" :
+                function_name = item.name
+                args = json.loads(item.arguments)
+
+                print(f"Calling function: {function_name} ({args})")
+
+                # Add function call to context
+                context.append({
+                    "type": "function_call",
+                    "name": item.name,
+                    "arguments": item.arguments,
+                    "call_id": item.call_id
+                })
+
+                # Execute tpools and capture result for printing
+                try:
+                    match function_name:
+                        case "final_answer":
+                            result = args.get("answer")
+                            final_aswer = result
+                            output = json.dumps({"status": "reported"})
+                        case "add":
+                            result = add(**args)
+                            output = json.dumps({"result": result})
+                        case "multiply":
+                            result = multiply(**args)
+                            output = json.dumps({"result": result})
+                        case _:
+                            result = f"Tool {function_name} not found"
+                            output = json.dumps({"error": result})
+                except Exception as e:
+                    result = f"Error: {e}"
+                    output = json.dumps({"error": result})
+
+                print(f"Result {result}")
+
+                # Add function output to context
+                context.append({
+                    "type": "function_call_output",
+                    "call_id": item.call_id,
+                    "output": output
+                })
+
+                # Exit processing if final answer reached
+                if done:
+                    break
+
+    if step >= max_steps:
+        print(f"\nReached maximum steps ({max_steps})")
+
+    print(f"\nCompleted in {step} steps")
+    if final_aswer:
+        print(f"Final answer: {final_aswer}")
 
 if __name__ == "__main__":
+    print("Start")
     run_example()
+    print("End")
