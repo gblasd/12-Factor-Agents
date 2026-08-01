@@ -1,0 +1,62 @@
+[
+  {
+    "type": "function",
+    "name": "sum_numbers",
+    "description": "Sum two numbers",
+    "strict": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "a": { "type": "number", "description": "The first number" },
+        "b": { "type": "number", "description": "The second number" }
+      },
+      "required": ["a", "b"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "multiply_numbers",
+    "description": "Multiply two numbers",
+    "strict": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "a": { "type": "number", "description": "The first number" },
+        "b": { "type": "number", "description": "The second number" }
+      },
+      "required": ["a", "b"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "divide_numbers",
+    "description": "Divide two numbers",
+    "strict": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "a": { "type": "number", "description": "The first number" },
+        "b": { "type": "number", "description": "The second number" }
+      },
+      "required": ["a", "b"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "subtract_numbers",
+    "description": "Subtract two numbers",
+    "strict": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "a": { "type": "number", "description": "The first number" },
+        "b": { "type": "number", "description": "The second number" }
+      },
+      "required": ["a", "b"],
+      "additionalProperties": false
+    }
+  }
+]
