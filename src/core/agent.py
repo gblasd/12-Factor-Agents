@@ -13,16 +13,16 @@ if not openai.api_key:
     raise EnvironmentError("OPENAI_API_KEY not found. Set it in environment or .env")
 
 # import tool functions from core/tools/functions/math.py
-from core.models import state
-from core.tools.functions.math import (
+from src.core.models import state
+from src.core.tools.functions.math import (
     sum_numbers,
     multiply_numbers,
     subtract_numbers,
     divide_numbers
 )
 
-from core.utils.context_serializer import serialize_context_to_text
-from core.models.state import State
+from src.core.utils.context_serializer import serialize_context_to_text
+from src.core.models.state import State
 
 class Agent:
     def __init__(
