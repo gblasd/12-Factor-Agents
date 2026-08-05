@@ -20,6 +20,8 @@ from core.tools.functions.math import (
     divide_numbers
 )
 
+from core.utils.context_serializer import serialize_context_to_text
+
 class Agent:
     def __init__(
         self,
@@ -34,12 +36,9 @@ class Agent:
         self.max_steps = max_steps
 
         # Define the base system prompt
-        self.system_prompt = (
-            "You are an autonomous agent that can take multiple tool-calling steps. "
-            "If your work is done, call the final_answer tool. "
-            "ALWAYS prefer calling tools to compute, fetch, or transform information "
-            "rather than fabricating results."
-        ) + (extra_instructions or "")
+        # Load system prompt from file. (Factor 2)
+        prompt_path = Path(__file__).resolve().parent / "prompts" / "base_system.md"
+        self.system_prompt = prompt_path.read_text(encoding="utf-8") + extra_instructions if extra_instructions else ""
 
         # Load tool schemas from JSON files
         # Using Path makes this portable across different environments
@@ -62,10 +61,13 @@ class Agent:
         Call the LLM with the current context.
         Returns the model's response, which will include tool calls.
         """
+        # Serialize context to control what the model sees (Factor 3)
+        serialized_content = serialize_context_to_text(context)
+
         response = openai.responses.create(
             model=self.model,
             instructions=self.system_prompt,
-            input=context,  # The full conversation history
+            input=serialized_content,  # The full conversation history: clean, formatted text
             tools=self.tool_schemas,  # Available tools
             tool_choice="required",  # Force the model to use a tool
             reasoning={"effort": self.reasoning_effort} if self.model == "gpt-5" else None
