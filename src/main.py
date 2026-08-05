@@ -17,3 +17,8 @@ context, status, final_answer = agent.run(context)
 # Display the results
 print(f"Status: {status}")
 print(f"Final answer: {final_answer}")
+
+# Display the raw final context for auditing
+print("\nFinal context:")
+for item in context:
+    print(item)
