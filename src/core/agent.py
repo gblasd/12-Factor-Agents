@@ -13,6 +13,7 @@ if not openai.api_key:
     raise EnvironmentError("OPENAI_API_KEY not found. Set it in environment or .env")
 
 # import tool functions from core/tools/functions/math.py
+from core.models import state
 from core.tools.functions.math import (
     sum_numbers,
     multiply_numbers,
@@ -21,6 +22,7 @@ from core.tools.functions.math import (
 )
 
 from core.utils.context_serializer import serialize_context_to_text
+from core.models.state import State
 
 class Agent:
     def __init__(
@@ -74,102 +76,115 @@ class Agent:
         )
         return response
 
-    def _next_step(self, context: List[Any]):
-        """
-        Execute one step of the agent loop:
-        1. Call the LLM
-        2. Extract function calls
-        3. Execute tools
-        4. Update context
-        Returns: (updated_context, status, final_answer)
-        """
-        # Get the model's response
-        response = self._call_llm(context)
-        
-        # Extract all function calls from the response
-        function_calls = [item for item in response.output if item.type == "function_call"]
+    def _next_step(self, state: State):
 
-        # Process each function call
-        for fc in function_calls:
-            call_name = fc.name
-            call_arguments = json.loads(fc.arguments)
+        # State carries both executiona and business data (Factor 5)
+        state.steps += 1
 
-            # Record the function call in context
-            context.append({
+        # Processed all queued tool calls
+        for function_call in state.pending_tool_calls:
+            call_name  = function_call["name"]
+            call_args  = function_call["arguments"]
+            call_id    = function_call["call_id"]
+
+            # Persist the tool call in the same state object
+            state.context.append({
                 "type": "function_call",
                 "name": call_name,
-                "arguments": fc.arguments,
-                "call_id": fc.call_id
+                "arguments": json.dumps(call_args),
+                "call_id": call_id
             })
 
-            # Check if this is the final answer
-            if call_name == "final_answer":
-                # Stop the loop and return the answer
-                return context, "complete", call_arguments.get("answer")
-
-                        # Execute the tool based on its name
+            # Execute the tool based on its name
             match call_name:
+                case "final_answer":
+                    # Agent is done - transition to complete status
+                    state.pending_tool_calls = []
+                    state.status = "complete"
+                    state.final_answer = call_args.get("answer")
+                    return state
+                    
                 case "sum_numbers":
+                    # Execute tool with error handling
                     try:
-                        result = sum_numbers(**call_arguments)
+                        result = sum_numbers(**call_args)
                         output = json.dumps({"result": result})
                     except Exception as e:
                         output = json.dumps({"result": f"Error: {str(e)}"})
-                
-                # Similar cases for multiply_numbers, subtract_numbers, divide_numbers, power, and square_root...
+
                 case "multiply_numbers":
                     try:
-                        result = multiply_numbers(**call_arguments)
+                        result = multiply_numbers(**call_args)
                         output = json.dumps({"result": result})
                     except Exception as e:
                         output = json.dumps({"result": f"Error: {str(e)}"})
-
                 case "subtract_numbers":
                     try:
-                        result = subtract_numbers(**call_arguments)
+                        result = subtract_numbers(**call_args)
                         output = json.dumps({"result": result})
                     except Exception as e:
                         output = json.dumps({"result": f"Error: {str(e)}"})
-
                 case "divide_numbers":
                     try:
-                        result = divide_numbers(**call_arguments)
+                        result = divide_numbers(**call_args)
                         output = json.dumps({"result": result})
                     except Exception as e:
-                        output = json.dumps({"result": f"Error: {str(e)}"}) 
-                        
+                        output = json.dumps({"result": f"Error: {str(e)}"})
                 case _:
                     # Unknown tool name
                     output = json.dumps({"result": f"Error: Tool {call_name} not found"})
 
-            # Record the tool output in context, linked to the original call
-            context.append({
+            # Remove processed call and store output
+            state.pending_tool_calls.remove(function_call)
+            # Store tool output in the same state object
+            state.context.append({
                 "type": "function_call_output",
-                "call_id": fc.call_id,
+                "call_id": call_id,
                 "output": output
             })
 
-        # All tools executed, continue the loop
-        return context, "running", None
+        # Call LLM with updated context including tool results
+        response = self._call_llm(state.context)
+        
+        # Extract all function calls from the response
+        function_calls = [item for item in response.output if item.type == "function_call"]
 
-    def run(self, context: List[Any]):
-        """
-        Run the agent loop until completion or max_steps.
-        Returns: (final_context, status, final_answer)
-        """
-        step = 0
-        status = "running"
-        final_answer = None
+        # Convert to dictionaries for easier manipulation
+        function_call_dicts = [
+            {
+                "name": fc.name,
+                "arguments": json.loads(fc.arguments),
+                "call_id": fc.call_id,
+                "type": fc.type
+            }
+            for fc in function_calls
+        ]
 
-        # Keep running until we complete or hit the step limit
-        while status == "running" and step < self.max_steps:
-            step += 1
-            # Each step returns updated context, status, and potentially an answer
-            context, status, final_answer = self._next_step(context)
+        # Queue new tool calls for the next step
+        state.pending_tool_calls.extend(function_call_dicts)
+        return state
 
-        # If we hit the step limit without completing, update status
-        if status == "running":
-            status = "max_steps_reached"
+    def run(self, state: State):
+        # Create a deep copy to avoid mutating the original
+        state = state.model_copy(deep=True)
 
-        # Return the final state
-        return context, status, final_answer
+        # Initialize execution status and clear stale errors
+        state.status = "running"
+        state.error = None
+
+        try:
+            # Process steps until completion or max_steps reached
+            while state.status == "running" and state.steps < self.max_steps:
+                state = self._next_step(state)
+                
+        except Exception as e:
+            # Capture fatal errors in the state object
+            state.status = "failed"
+            state.error = str(e)
+            return state
+
+        # Handle max_steps timeout
+        if state.status == "running":
+            state.status = "max_steps_reached"
+
+        return state
