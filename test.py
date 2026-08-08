@@ -22,6 +22,9 @@ while True:
     # Parse the response to get the latest state object
     current_state = response.json()
 
+    # Display current progress at every polling step
+    print(f"Status: {current_state['status']} | Steps: {current_state['steps']} | Pending tool calls: {current_state['pending_tool_calls']}")
+
     # Check if the agent has finished processing
     if current_state['status'] in ["complete", "max_steps_reached", "failed"]:
         print("Final State:")

@@ -4,3 +4,6 @@ setup:
 
 check:
 	python3 -m py_compile FoundationsOfAgenticTool/main.py 
+
+test:
+	python3 test.py
