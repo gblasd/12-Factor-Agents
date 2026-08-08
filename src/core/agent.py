@@ -164,7 +164,8 @@ class Agent:
         state.pending_tool_calls.extend(function_call_dicts)
         return state
 
-    def run(self, state: State):
+    def run(self, state: State, progress_callback=None):
+        """Execute agent steps on a given state and persist progress"""
         # Create a deep copy to avoid mutating the original
         state = state.model_copy(deep=True)
 
@@ -172,19 +173,30 @@ class Agent:
         state.status = "running"
         state.error = None
 
+        # Check if the agent is resuming 
+        is_resuming = state.steps > 0
+        max_steps_allowed = (self.max_steps + state.steps) if is_resuming else self.max_steps
+
         try:
             # Process steps until completion or max_steps reached
             while state.status == "running" and state.steps < self.max_steps:
                 state = self._next_step(state)
+
+                if progress_callback:
+                    progress_callback(state)
+
+            if state.status == "running" and state.steps >= max_steps_allowed:
+                state.status = "max_steps_reached"
+
+            return state
                 
         except Exception as e:
             # Capture fatal errors in the state object
             state.status = "failed"
             state.error = str(e)
+        
+            state.pending_tool_calls = []
+            if progress_callback:
+                progress_callback(state) # Save the failed state as well
+
             return state
-
-        # Handle max_steps timeout
-        if state.status == "running":
-            state.status = "max_steps_reached"
-
-        return state
